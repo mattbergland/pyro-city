@@ -77,11 +77,23 @@ export default function MapView() {
       if (director) {
         const s = useShowStore.getState()
         const t = s.currentTime
+        const dur = s.duration || 0
 
-        // Detect seek / restart -> clear active particles, don't retro-fire.
+        // The playhead moves for three reasons, which must be told apart:
+        //  • normal playback -> forward steps; fire any cues crossed (the range
+        //    check below handles big forward gaps too, e.g. a throttled tab
+        //    catching up, so cues are never missed).
+        //  • seek / restart   -> a jump backwards; drop stale particles and
+        //    resync without retro-firing every earlier cue.
+        //  • a startup spike  -> some audio backends emit one `timeupdate` at
+        //    the track's *duration* on the first play frame before real
+        //    playback begins (playhead jumps 0 -> end, then back to 0). That
+        //    spike must NOT fire the whole show at once, so it is ignored.
+        const isEndSpike = dur > 0 && t >= dur - 0.05 && lastTime < dur - 1
         if (t + 0.001 < lastTime) {
+          // Scrubbed backwards / restarted.
           director.engine.clear()
-        } else if (s.isPlaying) {
+        } else if (s.isPlaying && !isEndSpike) {
           // Fire any cues crossed since the last frame.
           for (const cue of s.cues) {
             if (cue.time > lastTime && cue.time <= t) {
@@ -124,21 +136,32 @@ function onMapClick(director: ShowDirector, position: Cesium.Cartesian2) {
 
   if (!store.placingSite) return
 
-  // Resolve a ground position from the click.
+  // Resolve a ground position from the click. Prefer the rendered surface
+  // (works for both photoreal 3D Tiles and the terrain globe), then fall back
+  // to the terrain ray pick and finally the ellipsoid.
   let cartesian: Cesium.Cartesian3 | undefined
-  const ray = viewer.camera.getPickRay(position)
-  if (ray) {
-    cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
+  if (viewer.scene.pickPositionSupported) {
+    cartesian = viewer.scene.pickPosition(position) ?? undefined
+  }
+  if (!cartesian) {
+    const ray = viewer.camera.getPickRay(position)
+    if (ray) {
+      cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
+    }
   }
   if (!cartesian) {
     cartesian = viewer.camera.pickEllipsoid(position) ?? undefined
   }
   if (!cartesian) return
 
+  // Use the exact surface height returned by the pick so the marker rests on
+  // the 3D model where it was clicked (ground, rooftop, stands, etc.). Do NOT
+  // clamp to 0 — over photoreal tiles the ground's ellipsoidal height can be
+  // negative (geoid offset), and clamping would float the marker in mid-air.
   const carto = Cesium.Cartographic.fromCartesian(cartesian)
   store.addLaunchSite({
     longitude: Cesium.Math.toDegrees(carto.longitude),
     latitude: Cesium.Math.toDegrees(carto.latitude),
-    height: Math.max(0, carto.height),
+    height: carto.height,
   })
 }

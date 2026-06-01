@@ -119,3 +119,8 @@ export const useShowStore = create<ShowState>((set, get) => ({
   placingSite: true,
   setPlacingSite: (v) => set({ placingSite: v }),
 }))
+
+// Dev-only handle for scripting/automated testing from the console.
+if (import.meta.env.DEV) {
+  ;(window as unknown as { useShowStore: typeof useShowStore }).useShowStore = useShowStore
+}

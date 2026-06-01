@@ -9,7 +9,7 @@ export default function Toolbar() {
     <header className="toolbar">
       <div className="brand">
         <span className="brand-mark">✦</span>
-        <span className="brand-name">Pyro Studio</span>
+        <span className="brand-name">Pyro City</span>
         <span className="brand-tag">3D fireworks designer</span>
       </div>
 

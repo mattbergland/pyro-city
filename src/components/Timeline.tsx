@@ -98,8 +98,15 @@ export default function Timeline() {
   // --- Transport controls ---
   function togglePlay() {
     const store = useShowStore.getState()
-    if (wsRef.current) {
-      wsRef.current.playPause()
+    const ws = wsRef.current
+    if (ws) {
+      // If the track is parked at the very end, rewind before replaying.
+      // Otherwise the media element reports its end time for one frame on
+      // play, spiking the playhead to the finish and back.
+      if (!ws.isPlaying() && ws.getCurrentTime() >= ws.getDuration() - 0.05) {
+        ws.setTime(0)
+      }
+      ws.playPause()
     } else {
       store.setPlaying(!store.isPlaying)
     }

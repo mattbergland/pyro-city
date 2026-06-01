@@ -66,6 +66,14 @@ export class ShowDirector {
     ctrl.enableTilt = true
     ctrl.enableLook = true
 
+    // Disable Cesium's default double-click behaviour. By default a
+    // double-click "tracks" the picked entity and flies the camera right up to
+    // it — double-clicking a launch site (or empty sky) flung the camera inside
+    // the marker / underground, which read as a black screen.
+    viewer.screenSpaceEventHandler.removeInputAction(
+      Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+    )
+
     if (hasIon) {
       this.loadIonAssets()
     }
@@ -73,7 +81,9 @@ export class ShowDirector {
     this.engine = new FireworkEngine(viewer.scene)
 
     if (import.meta.env.DEV) {
-      ;(window as unknown as { pyroDirector: ShowDirector }).pyroDirector = this
+      ;(window as unknown as { pyroDirector: ShowDirector; Cesium: typeof Cesium }).pyroDirector =
+        this
+      ;(window as unknown as { Cesium: typeof Cesium }).Cesium = Cesium
     }
 
     // Default view over San Francisco so the app isn't staring at blank ocean.
@@ -86,12 +96,43 @@ export class ShowDirector {
     })
   }
 
+  /** Whether photorealistic Google 3D Tiles are the active basemap. */
+  photoreal = false
+
   private async loadIonAssets() {
+    // First choice: Google Photorealistic 3D Tiles (ion asset 2275207) — real
+    // textured city meshes that look like the place. Falls back to the simpler
+    // grey OSM Buildings if that asset isn't enabled on the ion account.
+    try {
+      const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207)
+      if (this.viewer.isDestroyed()) {
+        tileset.destroy()
+        return
+      }
+      this.viewer.scene.primitives.add(tileset)
+      // Google's tiles include their own ground, so hide the imagery globe to
+      // avoid z-fighting and let the photoreal mesh be the terrain.
+      this.viewer.scene.globe.show = false
+      this.photoreal = true
+      return
+    } catch (err) {
+      console.info(
+        'Google Photorealistic 3D Tiles not available on this ion account; ' +
+          'falling back to OSM 3D buildings. Add asset 2275207 in Cesium ion to enable photoreal.',
+        err,
+      )
+    }
+
+    // Fallback: world terrain + grey extruded OSM Buildings.
     try {
       this.viewer.scene.setTerrain(
         new Cesium.Terrain(Cesium.CesiumTerrainProvider.fromIonAssetId(1)),
       )
       const buildings = await Cesium.createOsmBuildingsAsync()
+      if (this.viewer.isDestroyed()) {
+        buildings.destroy()
+        return
+      }
       this.viewer.scene.primitives.add(buildings)
     } catch (err) {
       // Non-fatal: app still works on the ellipsoid without terrain/buildings.
@@ -115,6 +156,72 @@ export class ShowDirector {
     }
   }
 
+  /** Last venue centre the camera framed, so the reset button can return. */
+  private lastFocus: Cesium.Cartesian3 | null = null
+
+  /**
+   * Resolve the point the on-screen camera controls should pivot around: the
+   * rendered surface at the centre of the view, falling back to the globe /
+   * ellipsoid so it always returns something usable.
+   */
+  private pivotPoint(): Cesium.Cartesian3 | undefined {
+    const scene = this.viewer.scene
+    const canvas = scene.canvas
+    const center = new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2)
+    let p: Cesium.Cartesian3 | undefined
+    if (scene.pickPositionSupported) {
+      p = scene.pickPosition(center) ?? undefined
+    }
+    if (!p) {
+      const ray = this.viewer.camera.getPickRay(center)
+      if (ray) p = scene.globe.pick(ray, scene) ?? undefined
+    }
+    if (!p) p = this.viewer.camera.pickEllipsoid(center) ?? undefined
+    return p
+  }
+
+  /**
+   * Orbit / tilt the camera around the point in the centre of the view, the way
+   * the on-screen arrow buttons work (for trackpads with no middle/right drag).
+   * Positive heading orbits right; positive pitch tilts the view up.
+   */
+  orbit(deltaHeadingDeg: number, deltaPitchDeg: number) {
+    const pivot = this.pivotPoint()
+    if (!pivot) return
+    const camera = this.viewer.camera
+    const transform = Cesium.Transforms.eastNorthUpToFixedFrame(pivot)
+    camera.lookAtTransform(transform)
+    if (deltaHeadingDeg) camera.rotateRight(Cesium.Math.toRadians(deltaHeadingDeg))
+    if (deltaPitchDeg) camera.rotateUp(Cesium.Math.toRadians(deltaPitchDeg))
+    camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
+  }
+
+  /** Zoom toward (factor < 1) or away from (factor > 1) the view centre. */
+  zoomByFactor(factor: number) {
+    const camera = this.viewer.camera
+    const pivot = this.pivotPoint()
+    const distance = pivot
+      ? Cesium.Cartesian3.distance(camera.positionWC, pivot)
+      : camera.positionCartographic.height
+    const amount = distance * Math.abs(1 - factor)
+    if (factor < 1) camera.zoomIn(amount)
+    else camera.zoomOut(amount)
+  }
+
+  /** Re-frame the last venue (or current view centre) at the default angle. */
+  resetView() {
+    const target = this.lastFocus ?? this.pivotPoint()
+    if (!target) return
+    this.viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 350), {
+      duration: 1.2,
+      offset: new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(20),
+        Cesium.Math.toRadians(-30),
+        900,
+      ),
+    })
+  }
+
   /** Smoothly fly the camera to a location (used after address search). */
   flyTo(longitude: number, latitude: number, height = 1500) {
     this.viewer.camera.flyTo({
@@ -124,6 +231,27 @@ export class ShowDirector {
         pitch: Cesium.Math.toRadians(-30),
       },
       duration: 2.0,
+    })
+  }
+
+  /**
+   * Fly down into a venue picked from search: a low, oblique "drone" view so
+   * the 3D structure of the building/stadium fills the frame, ready for
+   * placing launch sites.
+   */
+  flyToVenue(longitude: number, latitude: number) {
+    // Frame the venue with a bounding sphere so the camera lands with the
+    // target dead-centre on screen, at an oblique "drone" angle.
+    const center = Cesium.Cartesian3.fromDegrees(longitude, latitude, 0)
+    this.lastFocus = center
+    const sphere = new Cesium.BoundingSphere(center, 350)
+    this.viewer.camera.flyToBoundingSphere(sphere, {
+      duration: 2.6,
+      offset: new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(20),
+        Cesium.Math.toRadians(-30),
+        900,
+      ),
     })
   }
 

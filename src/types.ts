@@ -1,4 +1,4 @@
-// Core domain types for Pyro Studio
+// Core domain types for Pyro City
 
 /** A visual category of firework break. Drives the particle simulation shape. */
 export type FireworkShape =
