@@ -6,15 +6,35 @@ export default function SitesPanel() {
   const selectedSiteId = useShowStore((s) => s.selectedSiteId)
   const selectSite = useShowStore((s) => s.selectSite)
   const removeLaunchSite = useShowStore((s) => s.removeLaunchSite)
+  const renumberSites = useShowStore((s) => s.renumberSites)
+  const clearLaunchSites = useShowStore((s) => s.clearLaunchSites)
   const cues = useShowStore((s) => s.cues)
 
   return (
     <div className="sites-panel">
-      <h3>Launch Sites</h3>
+      <div className="sites-header">
+        <h3>Launch Sites</h3>
+        {launchSites.length > 0 && (
+          <div className="sites-header-actions">
+            <button
+              title="Renumber sites to Launch 1…N"
+              onClick={() => renumberSites()}
+            >
+              Reset #
+            </button>
+            <button
+              title="Remove all launch sites and their cues"
+              onClick={() => clearLaunchSites()}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+      </div>
       {launchSites.length === 0 && (
         <p className="muted">
-          Click anywhere on the map to drop your first launch site. Fireworks fire from
-          the selected site.
+          Click anywhere on the map to drop your first launch site, then drag a marker
+          to reposition it. Fireworks fire from the selected site.
         </p>
       )}
       <ul>

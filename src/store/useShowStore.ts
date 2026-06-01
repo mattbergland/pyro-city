@@ -2,10 +2,13 @@ import { create } from 'zustand'
 import type { Cue, LaunchSite } from '../types'
 import { FIREWORK_LIBRARY } from '../data/fireworks'
 
-let siteCounter = 0
-
 function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** Rename sites to a gap-free `Launch 1..N` sequence in their current order. */
+function renumber(sites: LaunchSite[]): LaunchSite[] {
+  return sites.map((site, i) => ({ ...site, name: `Launch ${i + 1}` }))
 }
 
 interface ShowState {
@@ -14,6 +17,12 @@ interface ShowState {
   selectedSiteId: string | null
   addLaunchSite: (site: Omit<LaunchSite, 'id' | 'name'> & { name?: string }) => string
   removeLaunchSite: (id: string) => void
+  updateLaunchSitePosition: (
+    id: string,
+    pos: { longitude: number; latitude: number; height: number },
+  ) => void
+  renumberSites: () => void
+  clearLaunchSites: () => void
   selectSite: (id: string | null) => void
 
   // --- Library selection (the firework you're about to place) ---
@@ -55,26 +64,34 @@ export const useShowStore = create<ShowState>((set, get) => ({
   selectedSiteId: null,
   addLaunchSite: (site) => {
     const id = uid('site')
-    siteCounter += 1
-    const newSite: LaunchSite = {
-      id,
-      name: site.name ?? `Launch ${siteCounter}`,
-      longitude: site.longitude,
-      latitude: site.latitude,
-      height: site.height ?? 0,
-    }
-    set((s) => ({
-      launchSites: [...s.launchSites, newSite],
-      selectedSiteId: s.selectedSiteId ?? id,
-    }))
+    set((s) => {
+      const newSite: LaunchSite = {
+        id,
+        name: site.name ?? `Launch ${s.launchSites.length + 1}`,
+        longitude: site.longitude,
+        latitude: site.latitude,
+        height: site.height ?? 0,
+      }
+      return {
+        launchSites: [...s.launchSites, newSite],
+        selectedSiteId: s.selectedSiteId ?? id,
+      }
+    })
     return id
   },
   removeLaunchSite: (id) =>
     set((s) => ({
-      launchSites: s.launchSites.filter((l) => l.id !== id),
+      // Renumber so the remaining sites stay a gap-free Launch 1..N sequence.
+      launchSites: renumber(s.launchSites.filter((l) => l.id !== id)),
       cues: s.cues.filter((c) => c.launchSiteId !== id),
       selectedSiteId: s.selectedSiteId === id ? null : s.selectedSiteId,
     })),
+  updateLaunchSitePosition: (id, pos) =>
+    set((s) => ({
+      launchSites: s.launchSites.map((l) => (l.id === id ? { ...l, ...pos } : l)),
+    })),
+  renumberSites: () => set((s) => ({ launchSites: renumber(s.launchSites) })),
+  clearLaunchSites: () => set({ launchSites: [], cues: [], selectedSiteId: null }),
   selectSite: (id) => set({ selectedSiteId: id }),
 
   selectedFireworkId: FIREWORK_LIBRARY[0].id,
