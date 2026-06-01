@@ -66,6 +66,14 @@ export class ShowDirector {
     ctrl.enableTilt = true
     ctrl.enableLook = true
 
+    // Disable Cesium's default double-click behaviour. By default a
+    // double-click "tracks" the picked entity and flies the camera right up to
+    // it — double-clicking a launch site (or empty sky) flung the camera inside
+    // the marker / underground, which read as a black screen.
+    viewer.screenSpaceEventHandler.removeInputAction(
+      Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+    )
+
     if (hasIon) {
       this.loadIonAssets()
     }
@@ -148,6 +156,72 @@ export class ShowDirector {
     }
   }
 
+  /** Last venue centre the camera framed, so the reset button can return. */
+  private lastFocus: Cesium.Cartesian3 | null = null
+
+  /**
+   * Resolve the point the on-screen camera controls should pivot around: the
+   * rendered surface at the centre of the view, falling back to the globe /
+   * ellipsoid so it always returns something usable.
+   */
+  private pivotPoint(): Cesium.Cartesian3 | undefined {
+    const scene = this.viewer.scene
+    const canvas = scene.canvas
+    const center = new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2)
+    let p: Cesium.Cartesian3 | undefined
+    if (scene.pickPositionSupported) {
+      p = scene.pickPosition(center) ?? undefined
+    }
+    if (!p) {
+      const ray = this.viewer.camera.getPickRay(center)
+      if (ray) p = scene.globe.pick(ray, scene) ?? undefined
+    }
+    if (!p) p = this.viewer.camera.pickEllipsoid(center) ?? undefined
+    return p
+  }
+
+  /**
+   * Orbit / tilt the camera around the point in the centre of the view, the way
+   * the on-screen arrow buttons work (for trackpads with no middle/right drag).
+   * Positive heading orbits right; positive pitch tilts the view up.
+   */
+  orbit(deltaHeadingDeg: number, deltaPitchDeg: number) {
+    const pivot = this.pivotPoint()
+    if (!pivot) return
+    const camera = this.viewer.camera
+    const transform = Cesium.Transforms.eastNorthUpToFixedFrame(pivot)
+    camera.lookAtTransform(transform)
+    if (deltaHeadingDeg) camera.rotateRight(Cesium.Math.toRadians(deltaHeadingDeg))
+    if (deltaPitchDeg) camera.rotateUp(Cesium.Math.toRadians(deltaPitchDeg))
+    camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
+  }
+
+  /** Zoom toward (factor < 1) or away from (factor > 1) the view centre. */
+  zoomByFactor(factor: number) {
+    const camera = this.viewer.camera
+    const pivot = this.pivotPoint()
+    const distance = pivot
+      ? Cesium.Cartesian3.distance(camera.positionWC, pivot)
+      : camera.positionCartographic.height
+    const amount = distance * Math.abs(1 - factor)
+    if (factor < 1) camera.zoomIn(amount)
+    else camera.zoomOut(amount)
+  }
+
+  /** Re-frame the last venue (or current view centre) at the default angle. */
+  resetView() {
+    const target = this.lastFocus ?? this.pivotPoint()
+    if (!target) return
+    this.viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 350), {
+      duration: 1.2,
+      offset: new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(20),
+        Cesium.Math.toRadians(-30),
+        900,
+      ),
+    })
+  }
+
   /** Smoothly fly the camera to a location (used after address search). */
   flyTo(longitude: number, latitude: number, height = 1500) {
     this.viewer.camera.flyTo({
@@ -169,6 +243,7 @@ export class ShowDirector {
     // Frame the venue with a bounding sphere so the camera lands with the
     // target dead-centre on screen, at an oblique "drone" angle.
     const center = Cesium.Cartesian3.fromDegrees(longitude, latitude, 0)
+    this.lastFocus = center
     const sphere = new Cesium.BoundingSphere(center, 350)
     this.viewer.camera.flyToBoundingSphere(sphere, {
       duration: 2.6,

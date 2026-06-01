@@ -3,6 +3,7 @@ import Toolbar from './components/Toolbar'
 import FireworkLibrary from './components/FireworkLibrary'
 import SitesPanel from './components/SitesPanel'
 import Timeline from './components/Timeline'
+import CameraControls from './components/CameraControls'
 import './App.css'
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
       <Toolbar />
       <div className="stage">
         <MapView />
+        <CameraControls />
         <aside className="panel panel-left">
           <h3>Firework Library</h3>
           <FireworkLibrary />

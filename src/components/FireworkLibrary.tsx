@@ -3,6 +3,7 @@ import { FIREWORK_LIBRARY } from '../data/fireworks'
 import { useShowStore } from '../store/useShowStore'
 import type { FireworkShape } from '../types'
 import { cesiumRefs } from '../cesium/director'
+import FireworkPreview from './FireworkPreview'
 
 const SHAPE_LABELS: Record<FireworkShape, string> = {
   peony: 'Peony',
@@ -78,14 +79,7 @@ export default function FireworkLibrary() {
               onDoubleClick={() => preview(fw.id)}
               title={`${fw.description}\nDrag onto the timeline, or double-click to preview.`}
             >
-              <span
-                className="fw-swatch"
-                style={{
-                  background: `radial-gradient(circle at 50% 45%, ${fw.colors[0]} 0%, ${
-                    fw.colors[1] ?? fw.colors[0]
-                  } 60%, transparent 72%)`,
-                }}
-              />
+              <FireworkPreview fw={fw} />
               <span className="fw-name">{fw.name}</span>
               <span className="fw-shape">{SHAPE_LABELS[fw.shape]}</span>
             </button>
