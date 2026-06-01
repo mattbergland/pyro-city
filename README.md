@@ -1,73 +1,59 @@
-# React + TypeScript + Vite
+# Pyro City
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A browser-based **3D fireworks designer** — think "Finale 3D" in the browser. Search any
+real-world venue, place launch sites on a photoreal 3D map, line fireworks up to an audio
+track on a waveform timeline, then press play and watch the show fire in sync with a
+cinematic, Google-Earth-style camera.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Real 3D venues** — CesiumJS globe with satellite imagery, world terrain, and 3D
+  buildings (Cesium OSM Buildings). Search a place (e.g. "Oracle Park") and fly straight in.
+- **Autocomplete place search** — type a venue/address, pick from real matches (powered by
+  free OpenStreetMap Nominatim geocoding), and the camera flies down into it.
+- **Firework library** — 30+ shells across 10 shapes (peony, chrysanthemum, willow, palm,
+  ring, crossette, strobe, comet, crackle, heart) with a named color palette.
+- **Place launch sites** — click anywhere on the map to drop a launch position.
+- **Audio + waveform timeline** — upload a track, see its waveform (wavesurfer.js), and
+  scrub through it.
+- **Cue system** — drag fireworks from the library onto the timeline at exact timestamps.
+- **Synchronized playback** — press play and the cued bursts fire in 3D at their times,
+  using a custom GPU point-particle engine with shape-specific physics. No audio? A 60s
+  silent clock lets you build and preview a test show.
+- **Google-Earth navigation + cinematic mode** — drag to pan, right-drag/ctrl-drag to
+  tilt and orbit, scroll to zoom, plus a "Cinematic" toggle that auto-orbits the show
+  during playback.
 
-## React Compiler
+## Tech stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Vite + React + TypeScript · CesiumJS (3D) · wavesurfer.js (audio) · Zustand (state) ·
+OpenStreetMap Nominatim (geocoding).
 
-## Expanding the ESLint configuration
+## Getting started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Cesium ion token (for 3D buildings + terrain)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The 3D buildings, world terrain, and satellite imagery come from
+[Cesium ion](https://ion.cesium.com/) (free, no billing required). Create an account, copy
+your default access token, and add it to a local env file:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+echo "VITE_CESIUM_ION_TOKEN=your_token_here" > .env.local
 ```
+
+Without a token the app still runs and is fully functional, but falls back to flat
+OpenStreetMap map tiles (no 3D buildings).
+
+## Scripts
+
+| Command           | Description                          |
+| ----------------- | ------------------------------------ |
+| `npm run dev`     | Start the dev server (HMR)           |
+| `npm run build`   | Type-check and build for production  |
+| `npm run lint`    | Run ESLint                           |
+| `npm run preview` | Preview the production build locally |

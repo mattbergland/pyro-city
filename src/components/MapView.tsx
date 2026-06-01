@@ -124,21 +124,32 @@ function onMapClick(director: ShowDirector, position: Cesium.Cartesian2) {
 
   if (!store.placingSite) return
 
-  // Resolve a ground position from the click.
+  // Resolve a ground position from the click. Prefer the rendered surface
+  // (works for both photoreal 3D Tiles and the terrain globe), then fall back
+  // to the terrain ray pick and finally the ellipsoid.
   let cartesian: Cesium.Cartesian3 | undefined
-  const ray = viewer.camera.getPickRay(position)
-  if (ray) {
-    cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
+  if (viewer.scene.pickPositionSupported) {
+    cartesian = viewer.scene.pickPosition(position) ?? undefined
+  }
+  if (!cartesian) {
+    const ray = viewer.camera.getPickRay(position)
+    if (ray) {
+      cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
+    }
   }
   if (!cartesian) {
     cartesian = viewer.camera.pickEllipsoid(position) ?? undefined
   }
   if (!cartesian) return
 
+  // Use the exact surface height returned by the pick so the marker rests on
+  // the 3D model where it was clicked (ground, rooftop, stands, etc.). Do NOT
+  // clamp to 0 — over photoreal tiles the ground's ellipsoidal height can be
+  // negative (geoid offset), and clamping would float the marker in mid-air.
   const carto = Cesium.Cartographic.fromCartesian(cartesian)
   store.addLaunchSite({
     longitude: Cesium.Math.toDegrees(carto.longitude),
     latitude: Cesium.Math.toDegrees(carto.latitude),
-    height: Math.max(0, carto.height),
+    height: carto.height,
   })
 }

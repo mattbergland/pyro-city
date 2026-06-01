@@ -73,7 +73,9 @@ export class ShowDirector {
     this.engine = new FireworkEngine(viewer.scene)
 
     if (import.meta.env.DEV) {
-      ;(window as unknown as { pyroDirector: ShowDirector }).pyroDirector = this
+      ;(window as unknown as { pyroDirector: ShowDirector; Cesium: typeof Cesium }).pyroDirector =
+        this
+      ;(window as unknown as { Cesium: typeof Cesium }).Cesium = Cesium
     }
 
     // Default view over San Francisco so the app isn't staring at blank ocean.
@@ -86,12 +88,43 @@ export class ShowDirector {
     })
   }
 
+  /** Whether photorealistic Google 3D Tiles are the active basemap. */
+  photoreal = false
+
   private async loadIonAssets() {
+    // First choice: Google Photorealistic 3D Tiles (ion asset 2275207) — real
+    // textured city meshes that look like the place. Falls back to the simpler
+    // grey OSM Buildings if that asset isn't enabled on the ion account.
+    try {
+      const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207)
+      if (this.viewer.isDestroyed()) {
+        tileset.destroy()
+        return
+      }
+      this.viewer.scene.primitives.add(tileset)
+      // Google's tiles include their own ground, so hide the imagery globe to
+      // avoid z-fighting and let the photoreal mesh be the terrain.
+      this.viewer.scene.globe.show = false
+      this.photoreal = true
+      return
+    } catch (err) {
+      console.info(
+        'Google Photorealistic 3D Tiles not available on this ion account; ' +
+          'falling back to OSM 3D buildings. Add asset 2275207 in Cesium ion to enable photoreal.',
+        err,
+      )
+    }
+
+    // Fallback: world terrain + grey extruded OSM Buildings.
     try {
       this.viewer.scene.setTerrain(
         new Cesium.Terrain(Cesium.CesiumTerrainProvider.fromIonAssetId(1)),
       )
       const buildings = await Cesium.createOsmBuildingsAsync()
+      if (this.viewer.isDestroyed()) {
+        buildings.destroy()
+        return
+      }
       this.viewer.scene.primitives.add(buildings)
     } catch (err) {
       // Non-fatal: app still works on the ellipsoid without terrain/buildings.
@@ -124,6 +157,26 @@ export class ShowDirector {
         pitch: Cesium.Math.toRadians(-30),
       },
       duration: 2.0,
+    })
+  }
+
+  /**
+   * Fly down into a venue picked from search: a low, oblique "drone" view so
+   * the 3D structure of the building/stadium fills the frame, ready for
+   * placing launch sites.
+   */
+  flyToVenue(longitude: number, latitude: number) {
+    // Frame the venue with a bounding sphere so the camera lands with the
+    // target dead-centre on screen, at an oblique "drone" angle.
+    const center = Cesium.Cartesian3.fromDegrees(longitude, latitude, 0)
+    const sphere = new Cesium.BoundingSphere(center, 350)
+    this.viewer.camera.flyToBoundingSphere(sphere, {
+      duration: 2.6,
+      offset: new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(20),
+        Cesium.Math.toRadians(-30),
+        900,
+      ),
     })
   }
 
