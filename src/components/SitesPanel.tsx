@@ -3,12 +3,17 @@ import { cesiumRefs } from '../cesium/director'
 
 export default function SitesPanel() {
   const launchSites = useShowStore((s) => s.launchSites)
-  const selectedSiteId = useShowStore((s) => s.selectedSiteId)
+  const selectedSiteIds = useShowStore((s) => s.selectedSiteIds)
   const selectSite = useShowStore((s) => s.selectSite)
+  const toggleSiteInSelection = useShowStore((s) => s.toggleSiteInSelection)
+  const selectAllSites = useShowStore((s) => s.selectAllSites)
   const removeLaunchSite = useShowStore((s) => s.removeLaunchSite)
   const renumberSites = useShowStore((s) => s.renumberSites)
   const clearLaunchSites = useShowStore((s) => s.clearLaunchSites)
   const cues = useShowStore((s) => s.cues)
+
+  const allSelected =
+    launchSites.length > 0 && selectedSiteIds.length === launchSites.length
 
   return (
     <div className="sites-panel">
@@ -16,6 +21,12 @@ export default function SitesPanel() {
         <h3>Launch Sites</h3>
         {launchSites.length > 0 && (
           <div className="sites-header-actions">
+            <button
+              title="Select all sites (cues will fire from every selected site)"
+              onClick={() => (allSelected ? selectSite(null) : selectAllSites())}
+            >
+              {allSelected ? 'Deselect' : 'Select all'}
+            </button>
             <button
               title="Renumber sites to Launch 1…N"
               onClick={() => renumberSites()}
@@ -34,18 +45,32 @@ export default function SitesPanel() {
       {launchSites.length === 0 && (
         <p className="muted">
           Click anywhere on the map to drop your first launch site, then drag a marker
-          to reposition it. Fireworks fire from the selected site.
+          to reposition it. Fireworks fire from the selected site(s).
+        </p>
+      )}
+      {launchSites.length > 1 && (
+        <p className="muted sites-hint">
+          Tick multiple sites to cue them all at once. {selectedSiteIds.length} selected.
         </p>
       )}
       <ul>
         {launchSites.map((site) => {
           const count = cues.filter((c) => c.launchSiteId === site.id).length
+          const checked = selectedSiteIds.includes(site.id)
           return (
             <li
               key={site.id}
-              className={site.id === selectedSiteId ? 'site-row selected' : 'site-row'}
+              className={checked ? 'site-row selected' : 'site-row'}
               onClick={() => selectSite(site.id)}
             >
+              <input
+                type="checkbox"
+                className="site-check"
+                checked={checked}
+                title="Include this site when cueing"
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSiteInSelection(site.id)}
+              />
               <div className="site-info">
                 <span className="site-name">{site.name}</span>
                 <span className="site-coords">

@@ -395,9 +395,22 @@ body,
   border-color: var(--accent);
   background: rgba(255, 138, 62, 0.12);
 }
+.site-check {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.sites-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
 .site-info {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 .site-name {
   font-size: 13px;
@@ -459,6 +472,74 @@ body,
   align-items: center;
 }
 
+/* --- Timeline tools (zoom + BPM) row --- */
+.timeline-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.tool-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tool-group input[type='range'] {
+  width: 120px;
+  accent-color: var(--accent);
+}
+.mini-btn {
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mini-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.mini-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.bpm-input {
+  width: 54px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tool-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* --- Scrollable timeline + zoom --- */
+.timeline-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 10px;
+}
+
 .timeline-track {
   position: relative;
   height: 92px;
@@ -486,34 +567,90 @@ body,
   color: var(--muted);
   font-size: 13px;
 }
+/* --- Beat grid --- */
+.beat-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.beat-line {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.08);
+}
+.beat-line.downbeat {
+  background: rgba(62, 255, 226, 0.28);
+}
+
 .cue-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
+/* Numbered cue marker: badge = launch site number, color = firework */
 .cue-marker {
   position: absolute;
-  top: 0;
-  width: 10px;
+  top: 4px;
   height: 100%;
-  margin-left: -5px;
-  border-radius: 3px;
-  opacity: 0.9;
+  transform: translateX(-50%);
   pointer-events: auto;
   cursor: ew-resize;
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.cue-marker:hover {
-  opacity: 1;
-  outline: 1px solid #fff;
+.cue-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #08111f;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  z-index: 2;
 }
+.cue-stem {
+  width: 3px;
+  flex: 1;
+  margin-top: -1px;
+  opacity: 0.75;
+  border-radius: 2px;
+}
+.cue-marker:hover .cue-badge {
+  outline: 2px solid #fff;
+}
+
+/* --- DJ-style playhead --- */
 .playhead {
   position: absolute;
   top: 0;
   width: 2px;
   height: 100%;
-  background: #fff;
+  margin-left: -1px;
+  background: #3effe2;
   pointer-events: none;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 10px rgba(62, 255, 226, 0.9);
+  z-index: 5;
+}
+.playhead-flag {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  transform: translateX(-50%);
+  background: #3effe2;
+  color: #042018;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 0 0 5px 5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
 }
