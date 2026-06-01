@@ -77,11 +77,23 @@ export default function MapView() {
       if (director) {
         const s = useShowStore.getState()
         const t = s.currentTime
+        const dur = s.duration || 0
 
-        // Detect seek / restart -> clear active particles, don't retro-fire.
+        // The playhead moves for three reasons, which must be told apart:
+        //  • normal playback -> forward steps; fire any cues crossed (the range
+        //    check below handles big forward gaps too, e.g. a throttled tab
+        //    catching up, so cues are never missed).
+        //  • seek / restart   -> a jump backwards; drop stale particles and
+        //    resync without retro-firing every earlier cue.
+        //  • a startup spike  -> some audio backends emit one `timeupdate` at
+        //    the track's *duration* on the first play frame before real
+        //    playback begins (playhead jumps 0 -> end, then back to 0). That
+        //    spike must NOT fire the whole show at once, so it is ignored.
+        const isEndSpike = dur > 0 && t >= dur - 0.05 && lastTime < dur - 1
         if (t + 0.001 < lastTime) {
+          // Scrubbed backwards / restarted.
           director.engine.clear()
-        } else if (s.isPlaying) {
+        } else if (s.isPlaying && !isEndSpike) {
           // Fire any cues crossed since the last frame.
           for (const cue of s.cues) {
             if (cue.time > lastTime && cue.time <= t) {
