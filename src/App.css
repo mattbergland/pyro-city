@@ -341,12 +341,35 @@ body,
 }
 
 /* --- Sites panel --- */
+.sites-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 .sites-panel h3 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--muted);
+}
+.sites-header-actions {
+  display: flex;
+  gap: 6px;
+}
+.sites-header-actions button {
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sites-header-actions button:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 .sites-panel ul {
   list-style: none;

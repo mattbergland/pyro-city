@@ -15,10 +15,69 @@ export default function MapView() {
     directorRef.current = director
     cesiumRefs.director = director
 
-    const handler = new Cesium.ScreenSpaceEventHandler(director.viewer.scene.canvas)
+    const viewer = director.viewer
+    const ssc = viewer.scene.screenSpaceCameraController
+    const canvas = viewer.scene.canvas
+    const handler = new Cesium.ScreenSpaceEventHandler(canvas)
+
+    // Click empty ground to place a site, or click a marker to select it.
     handler.setInputAction((evt: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       onMapClick(director, evt.position)
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+
+    // --- Drag a launch-site marker to reposition it ---
+    // While dragging we freeze the camera and move the picked marker directly,
+    // re-anchoring it to the rendered surface under the cursor. The store is
+    // updated once on release so we don't rebuild every entity each frame.
+    const drag = { id: null as string | null, moved: false }
+
+    handler.setInputAction((evt: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const picked = viewer.scene.pick(evt.position)
+      const id = picked?.id?.id
+      if (typeof id !== 'string') return
+      if (!useShowStore.getState().launchSites.some((l) => l.id === id)) return
+      drag.id = id
+      drag.moved = false
+      useShowStore.getState().selectSite(id)
+      ssc.enableInputs = false // freeze camera while dragging the marker
+      canvas.style.cursor = 'grabbing'
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN)
+
+    handler.setInputAction((evt: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (!drag.id) {
+        // Hover feedback: show a grab cursor over draggable markers.
+        const picked = viewer.scene.pick(evt.endPosition)
+        const overSite =
+          typeof picked?.id?.id === 'string' &&
+          useShowStore.getState().launchSites.some((l) => l.id === picked.id.id)
+        canvas.style.cursor = overSite ? 'grab' : ''
+        return
+      }
+      const cart = pickSurface(viewer, evt.endPosition)
+      if (!cart) return
+      drag.moved = true
+      const entity = viewer.entities.getById(drag.id)
+      if (entity) entity.position = new Cesium.ConstantPositionProperty(cart)
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+
+    handler.setInputAction(() => {
+      const id = drag.id
+      const moved = drag.moved
+      drag.id = null
+      drag.moved = false
+      ssc.enableInputs = true
+      canvas.style.cursor = ''
+      if (!id || !moved) return
+      const entity = viewer.entities.getById(id)
+      const pos = entity?.position?.getValue(viewer.clock.currentTime)
+      if (!pos) return
+      const carto = Cesium.Cartographic.fromCartesian(pos)
+      useShowStore.getState().updateLaunchSitePosition(id, {
+        longitude: Cesium.Math.toDegrees(carto.longitude),
+        latitude: Cesium.Math.toDegrees(carto.latitude),
+        height: carto.height,
+      })
+    }, Cesium.ScreenSpaceEventType.LEFT_UP)
 
     return () => {
       handler.destroy()
@@ -136,22 +195,7 @@ function onMapClick(director: ShowDirector, position: Cesium.Cartesian2) {
 
   if (!store.placingSite) return
 
-  // Resolve a ground position from the click. Prefer the rendered surface
-  // (works for both photoreal 3D Tiles and the terrain globe), then fall back
-  // to the terrain ray pick and finally the ellipsoid.
-  let cartesian: Cesium.Cartesian3 | undefined
-  if (viewer.scene.pickPositionSupported) {
-    cartesian = viewer.scene.pickPosition(position) ?? undefined
-  }
-  if (!cartesian) {
-    const ray = viewer.camera.getPickRay(position)
-    if (ray) {
-      cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
-    }
-  }
-  if (!cartesian) {
-    cartesian = viewer.camera.pickEllipsoid(position) ?? undefined
-  }
+  const cartesian = pickSurface(viewer, position)
   if (!cartesian) return
 
   // Use the exact surface height returned by the pick so the marker rests on
@@ -164,4 +208,27 @@ function onMapClick(director: ShowDirector, position: Cesium.Cartesian2) {
     latitude: Cesium.Math.toDegrees(carto.latitude),
     height: carto.height,
   })
+}
+
+/**
+ * Resolve a world position on the rendered surface under a screen point.
+ * Prefers the rendered surface (works for both photoreal 3D Tiles and the
+ * terrain globe), then falls back to the terrain ray pick, then the ellipsoid.
+ */
+function pickSurface(
+  viewer: Cesium.Viewer,
+  position: Cesium.Cartesian2,
+): Cesium.Cartesian3 | undefined {
+  let cartesian: Cesium.Cartesian3 | undefined
+  if (viewer.scene.pickPositionSupported) {
+    cartesian = viewer.scene.pickPosition(position) ?? undefined
+  }
+  if (!cartesian) {
+    const ray = viewer.camera.getPickRay(position)
+    if (ray) cartesian = viewer.scene.globe.pick(ray, viewer.scene) ?? undefined
+  }
+  if (!cartesian) {
+    cartesian = viewer.camera.pickEllipsoid(position) ?? undefined
+  }
+  return cartesian
 }
