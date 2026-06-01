@@ -89,21 +89,24 @@ function pickPeaks(
   const threshold = m + sensitivity * sd
   const peaks: number[] = []
   let lastTime = -Infinity
+  let lastPeakNov = 0
   for (let i = 1; i < nov.length - 1; i++) {
     const v = nov[i]
     if (v < threshold) continue
     if (v < nov[i - 1] || v < nov[i + 1]) continue // local maximum only
     const t = times[i]
     if (t - lastTime < minSpacingSec) {
-      // Keep the louder of two peaks that are too close together.
-      if (peaks.length && v > nov[Math.max(1, i - 1)]) {
+      // Two peaks fell within the min spacing — keep whichever is louder.
+      if (peaks.length && v > lastPeakNov) {
         peaks[peaks.length - 1] = t
         lastTime = t
+        lastPeakNov = v
       }
       continue
     }
     peaks.push(t)
     lastTime = t
+    lastPeakNov = v
   }
   return peaks
 }

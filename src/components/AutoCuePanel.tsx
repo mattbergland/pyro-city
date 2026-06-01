@@ -17,35 +17,47 @@ export default function AutoCuePanel() {
   const selectedFireworkIds = useShowStore((s) => s.selectedFireworkIds)
 
   const [open, setOpen] = useState(false)
-  const [analysis, setAnalysis] = useState<AudioAnalysis | null>(null)
+  // Analysis + status are tagged with the track they belong to so they're
+  // automatically discarded (treated as stale) when the audio changes — no
+  // effect needed.
+  const [analyzed, setAnalyzed] = useState<{ url: string; result: AudioAnalysis } | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [mode, setMode] = useState<Mode>('peaks')
   const [interval, setIntervalSec] = useState(1)
   const [sensitivity, setSensitivity] = useState(1.3)
   const [replaceExisting, setReplaceExisting] = useState(true)
-  const [status, setStatus] = useState<string | null>(null)
+  const [statusInfo, setStatusInfo] = useState<{ url: string; msg: string } | null>(null)
+
+  const analysis = analyzed && analyzed.url === audioUrl ? analyzed.result : null
+  const status = statusInfo && statusInfo.url === audioUrl ? statusInfo.msg : null
+
+  function setStatus(msg: string) {
+    setStatusInfo(audioUrl ? { url: audioUrl, msg } : null)
+  }
 
   function analyze() {
     const ws = audioRefs.ws
     const buffer = ws?.getDecodedData()
-    if (!buffer) {
+    if (!buffer || !audioUrl) {
       setStatus('Audio is still loading — try again in a moment.')
       return
     }
+    const url = audioUrl
     setAnalyzing(true)
-    setStatus(null)
+    setStatusInfo(null)
     // Defer so the "Analyzing…" state can paint before the (sync) crunch.
     setTimeout(() => {
       try {
         const result = analyzeAudio(buffer, sensitivity)
-        setAnalysis(result)
-        setStatus(
-          `Found ${result.peaks.length} peaks · ${
+        setAnalyzed({ url, result })
+        setStatusInfo({
+          url,
+          msg: `Found ${result.peaks.length} peaks · ${
             result.bpm ? `~${result.bpm} BPM` : 'tempo unclear'
           }`,
-        )
+        })
       } catch {
-        setStatus('Could not analyze this track.')
+        setStatusInfo({ url, msg: 'Could not analyze this track.' })
       } finally {
         setAnalyzing(false)
       }
