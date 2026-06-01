@@ -17,13 +17,20 @@ interface ShowState {
   selectSite: (id: string | null) => void
 
   // --- Library selection (the firework you're about to place) ---
+  // `selectedFireworkId` is the primary type (used for single placement /
+  // preview). `selectedFireworkIds` is the multi-select palette used for batch
+  // cueing and auto-assign variety. The primary is always the first entry.
   selectedFireworkId: string
+  selectedFireworkIds: string[]
 
   selectFirework: (id: string) => void
+  toggleFireworkSelected: (id: string) => void
 
   // --- Cues (fireworks scheduled on the timeline) ---
   cues: Cue[]
   addCue: (time: number, fireworkTypeId?: string, launchSiteId?: string) => void
+  /** Add many cues at once (used by batch placement / auto-assign). */
+  addCues: (entries: { time: number; fireworkTypeId: string }[], launchSiteId?: string) => void
   updateCueTime: (id: string, time: number) => void
   removeCue: (id: string) => void
   clearCues: () => void
@@ -78,7 +85,18 @@ export const useShowStore = create<ShowState>((set, get) => ({
   selectSite: (id) => set({ selectedSiteId: id }),
 
   selectedFireworkId: FIREWORK_LIBRARY[0].id,
-  selectFirework: (id) => set({ selectedFireworkId: id }),
+  selectedFireworkIds: [FIREWORK_LIBRARY[0].id],
+  selectFirework: (id) => set({ selectedFireworkId: id, selectedFireworkIds: [id] }),
+  toggleFireworkSelected: (id) =>
+    set((s) => {
+      const has = s.selectedFireworkIds.includes(id)
+      const ids = has
+        ? s.selectedFireworkIds.filter((x) => x !== id)
+        : [...s.selectedFireworkIds, id]
+      // Never allow an empty palette; keep at least the toggled item.
+      const next = ids.length > 0 ? ids : [id]
+      return { selectedFireworkIds: next, selectedFireworkId: next[0] }
+    }),
 
   cues: [],
   addCue: (time, fireworkTypeId, launchSiteId) => {
@@ -92,6 +110,18 @@ export const useShowStore = create<ShowState>((set, get) => ({
       launchSiteId: siteId,
     }
     set((s) => ({ cues: [...s.cues, cue].sort((a, b) => a.time - b.time) }))
+  },
+  addCues: (entries, launchSiteId) => {
+    const state = get()
+    const siteId = launchSiteId ?? state.selectedSiteId ?? state.launchSites[0]?.id
+    if (!siteId || entries.length === 0) return
+    const newCues: Cue[] = entries.map((e) => ({
+      id: uid('cue'),
+      time: Math.max(0, e.time),
+      fireworkTypeId: e.fireworkTypeId,
+      launchSiteId: siteId,
+    }))
+    set((s) => ({ cues: [...s.cues, ...newCues].sort((a, b) => a.time - b.time) }))
   },
   updateCueTime: (id, time) =>
     set((s) => ({

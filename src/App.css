@@ -324,7 +324,15 @@ body,
   border-radius: 10px;
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.03);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* Inner element whose width grows with the zoom level; everything (waveform,
+   cues, playhead) is positioned relative to this so they stay aligned. */
+.timeline-content {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
 }
 .timeline-track.drag-over {
   border-color: var(--accent);
@@ -375,4 +383,103 @@ body,
   background: #fff;
   pointer-events: none;
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+}
+
+/* --- Zoom controls --- */
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.zoom-readout {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 34px;
+  text-align: center;
+}
+.transport:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* --- Auto-cue tool --- */
+.autocue {
+  position: relative;
+}
+.transport.primary {
+  background: var(--accent);
+  color: #1a0e05;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.autocue-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #0d1426;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.autocue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.autocue-bpm {
+  font-size: 13px;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+.autocue-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.autocue-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.autocue-modes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.autocue-interval {
+  width: 52px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.autocue-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.autocue-palette {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.autocue-palette span {
+  color: var(--text);
+}
+.autocue-status {
+  font-size: 12px;
+  color: var(--accent-2);
 }

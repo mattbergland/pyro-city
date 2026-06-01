@@ -19,8 +19,9 @@ const SHAPE_LABELS: Record<FireworkShape, string> = {
 
 export default function FireworkLibrary() {
   const [filter, setFilter] = useState<FireworkShape | 'all'>('all')
-  const selectedFireworkId = useShowStore((s) => s.selectedFireworkId)
+  const selectedFireworkIds = useShowStore((s) => s.selectedFireworkIds)
   const selectFirework = useShowStore((s) => s.selectFirework)
+  const toggleFireworkSelected = useShowStore((s) => s.toggleFireworkSelected)
 
   const shapes = useMemo(
     () => Array.from(new Set(FIREWORK_LIBRARY.map((f) => f.shape))),
@@ -64,7 +65,7 @@ export default function FireworkLibrary() {
 
       <div className="library-grid">
         {items.map((fw) => {
-          const selected = fw.id === selectedFireworkId
+          const selected = selectedFireworkIds.includes(fw.id)
           return (
             <button
               key={fw.id}
@@ -74,9 +75,14 @@ export default function FireworkLibrary() {
                 e.dataTransfer.setData('application/x-firework', fw.id)
                 e.dataTransfer.effectAllowed = 'copy'
               }}
-              onClick={() => selectFirework(fw.id)}
+              onClick={(e) => {
+                // Ctrl/⌘-click toggles the firework in the multi-select palette
+                // (used for batch cueing); a plain click selects just this one.
+                if (e.ctrlKey || e.metaKey) toggleFireworkSelected(fw.id)
+                else selectFirework(fw.id)
+              }}
               onDoubleClick={() => preview(fw.id)}
-              title={`${fw.description}\nDrag onto the timeline, or double-click to preview.`}
+              title={`${fw.description}\nClick to select · Ctrl/⌘-click to multi-select · drag onto the timeline · double-click to preview.`}
             >
               <span
                 className="fw-swatch"
@@ -93,7 +99,8 @@ export default function FireworkLibrary() {
         })}
       </div>
       <p className="library-hint">
-        Click to select · drag onto the timeline · double-click to preview in 3D
+        Click to select · Ctrl/⌘-click to multi-select · drag onto the timeline ·
+        double-click to preview in 3D
       </p>
     </div>
   )

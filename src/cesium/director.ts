@@ -115,16 +115,46 @@ export class ShowDirector {
     }
   }
 
-  /** Smoothly fly the camera to a location (used after address search). */
-  flyTo(longitude: number, latitude: number, height = 1500) {
-    this.viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, height),
-      orientation: {
-        heading: Cesium.Math.toRadians(20),
-        pitch: Cesium.Math.toRadians(-30),
-      },
-      duration: 2.0,
+  /**
+   * Frame a bounding sphere from an oblique angle that leaves the airspace
+   * above the target in view (so fireworks bursting overhead are visible).
+   */
+  private frameSphere(sphere: Cesium.BoundingSphere, duration: number) {
+    this.viewer.camera.flyToBoundingSphere(sphere, {
+      duration,
+      offset: new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(20),
+        Cesium.Math.toRadians(-25),
+        sphere.radius * 3.2,
+      ),
     })
+  }
+
+  /**
+   * Smoothly fly the camera to a location, framed so there's sky above the
+   * point (used after address search and the "fly here" site button). The
+   * `height` argument is treated as a zoom hint controlling how wide the shot
+   * is rather than a literal camera altitude.
+   */
+  flyTo(longitude: number, latitude: number, height = 1500) {
+    const center = Cesium.Cartesian3.fromDegrees(longitude, latitude, 160)
+    const radius = Math.max(height * 0.5, 400)
+    this.frameSphere(new Cesium.BoundingSphere(center, radius), 2.0)
+  }
+
+  /**
+   * Frame the whole show: all launch sites plus the airspace above them where
+   * the breaks happen. Called when playback starts (outside cinematic mode) so
+   * the user always sees the fireworks go off.
+   */
+  frameShow(sites: LaunchSite[], duration = 1.4) {
+    if (sites.length === 0) return
+    const points = sites.map((s) =>
+      Cesium.Cartesian3.fromDegrees(s.longitude, s.latitude, s.height + 200),
+    )
+    const sphere = Cesium.BoundingSphere.fromPoints(points)
+    sphere.radius = Math.max(sphere.radius + 250, 500)
+    this.frameSphere(sphere, duration)
   }
 
   /** World (ECEF) position of a firework break above a launch site. */
@@ -141,17 +171,22 @@ export class ShowDirector {
   }
 
   /** Advance one frame. `dt` seconds. Handles cinematic orbit. */
-  tick(dt: number, cinematic: boolean, focus?: { lon: number; lat: number; height: number }) {
+  tick(
+    dt: number,
+    cinematic: boolean,
+    focus?: { lon: number; lat: number; height: number; radius?: number },
+  ) {
     this.engine.update(dt)
     if (cinematic && focus) {
       this.orbitAngle += dt * 6 // degrees per second
       const center = Cesium.Cartesian3.fromDegrees(focus.lon, focus.lat, focus.height)
+      const range = Math.max((focus.radius ?? 0) * 2.4, 900)
       this.viewer.camera.lookAt(
         center,
         new Cesium.HeadingPitchRange(
           Cesium.Math.toRadians(this.orbitAngle),
           Cesium.Math.toRadians(-18),
-          900,
+          range,
         ),
       )
     } else {

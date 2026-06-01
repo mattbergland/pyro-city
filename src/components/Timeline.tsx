@@ -3,8 +3,11 @@ import WaveSurfer from 'wavesurfer.js'
 import { useShowStore } from '../store/useShowStore'
 import { audioRefs } from '../audio/audioRefs'
 import { getFireworkById } from '../data/fireworks'
+import AutoCuePanel from './AutoCuePanel'
 
 const DEFAULT_DURATION = 60 // seconds, used when no audio is loaded
+const MAX_ZOOM = 16
+const MIN_ZOOM = 1
 
 function fmt(t: number) {
   const m = Math.floor(t / 60)
@@ -16,6 +19,7 @@ function fmt(t: number) {
 export default function Timeline() {
   const waveRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const wsRef = useRef<WaveSurfer | null>(null)
   const syntheticRaf = useRef<number>(0)
 
@@ -25,6 +29,7 @@ export default function Timeline() {
   const isPlaying = useShowStore((s) => s.isPlaying)
   const cues = useShowStore((s) => s.cues)
   const [dragOver, setDragOver] = useState(false)
+  const [zoom, setZoom] = useState(1)
 
   // --- Build / rebuild the WaveSurfer instance when audio changes ---
   useEffect(() => {
@@ -51,6 +56,7 @@ export default function Timeline() {
       cursorColor: '#ffffff',
       barWidth: 2,
       barGap: 1,
+      fillParent: true,
       url: audioUrl,
     })
     wsRef.current = ws
@@ -70,6 +76,18 @@ export default function Timeline() {
       if (audioRefs.ws === ws) audioRefs.ws = null
     }
   }, [audioUrl])
+
+  // --- Keep playhead in view while zoomed in and playing ---
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track || zoom <= 1) return
+    const playX = (currentTime / (duration || DEFAULT_DURATION)) * track.scrollWidth
+    const left = track.scrollLeft
+    const right = left + track.clientWidth
+    if (playX < left + 40 || playX > right - 40) {
+      track.scrollTo({ left: playX - track.clientWidth / 2, behavior: 'smooth' })
+    }
+  }, [currentTime, zoom, duration])
 
   // --- Synthetic clock when there is no audio loaded ---
   useEffect(() => {
@@ -122,11 +140,19 @@ export default function Timeline() {
     store.setAudio(url, file.name)
     store.setCurrentTime(0)
     store.setPlaying(false)
+    setZoom(1)
   }
 
-  // --- Drag a firework from the library onto the timeline ---
+  // --- Batch-add the whole selected palette at the playhead ---
+  function addPaletteAtPlayhead() {
+    const store = useShowStore.getState()
+    const ids = store.selectedFireworkIds
+    store.addCues(ids.map((id) => ({ time: store.currentTime, fireworkTypeId: id })))
+  }
+
+  // --- Map a screen X to a show time using the (possibly zoomed) content ---
   function timeFromClientX(clientX: number) {
-    const el = trackRef.current
+    const el = contentRef.current
     if (!el) return 0
     const rect = el.getBoundingClientRect()
     const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
@@ -139,6 +165,10 @@ export default function Timeline() {
     if (!fwId) return
     const time = timeFromClientX(e.clientX)
     useShowStore.getState().addCue(time, fwId)
+  }
+
+  function zoomBy(factor: number) {
+    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(z * factor).toFixed(2))))
   }
 
   const effectiveDuration = duration || DEFAULT_DURATION
@@ -164,11 +194,12 @@ export default function Timeline() {
 
         <button
           className="transport ghost"
-          onClick={() => useShowStore.getState().addCue(currentTime)}
-          title="Add selected firework at the playhead"
+          onClick={addPaletteAtPlayhead}
+          title="Add the selected firework(s) at the playhead"
         >
           + Cue at playhead
         </button>
+        <AutoCuePanel />
         <CinematicToggle />
         <button
           className="transport ghost"
@@ -177,6 +208,32 @@ export default function Timeline() {
         >
           Clear cues
         </button>
+
+        {/* Waveform zoom controls */}
+        <div className="zoom-controls" title="Zoom the timeline for precise cueing">
+          <button
+            className="transport ghost"
+            onClick={() => zoomBy(1 / 1.6)}
+            disabled={zoom <= MIN_ZOOM}
+            title="Zoom out"
+          >
+            −
+          </button>
+          <span className="zoom-readout">{zoom.toFixed(1)}×</span>
+          <button
+            className="transport ghost"
+            onClick={() => zoomBy(1.6)}
+            disabled={zoom >= MAX_ZOOM}
+            title="Zoom in"
+          >
+            +
+          </button>
+          {zoom > 1 && (
+            <button className="transport ghost" onClick={() => setZoom(1)} title="Reset zoom">
+              Fit
+            </button>
+          )}
+        </div>
       </div>
 
       <div
@@ -189,39 +246,49 @@ export default function Timeline() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
       >
-        {!audioUrl && (
-          <div className="no-audio-hint">
-            No audio yet — upload a track to see its waveform, or drag fireworks here to
-            build a {DEFAULT_DURATION}s test show.
+        <div
+          ref={contentRef}
+          className="timeline-content"
+          style={{ width: `${zoom * 100}%` }}
+        >
+          {!audioUrl && (
+            <div className="no-audio-hint">
+              No audio yet — upload a track to see its waveform, or drag fireworks here to
+              build a {DEFAULT_DURATION}s test show.
+            </div>
+          )}
+          <div
+            ref={waveRef}
+            className="waveform"
+            style={{ display: audioUrl ? 'block' : 'none' }}
+          />
+
+          {/* Cue markers */}
+          <div className="cue-layer">
+            {cues.map((cue) => {
+              const fw = getFireworkById(cue.fireworkTypeId)
+              const left = (cue.time / effectiveDuration) * 100
+              return (
+                <div
+                  key={cue.id}
+                  className="cue-marker"
+                  style={{ left: `${left}%`, background: fw?.colors[0] ?? '#fff' }}
+                  title={`${fw?.name ?? 'Firework'} @ ${fmt(cue.time)} — click to delete`}
+                  onPointerDown={(e) => startCueDrag(e, cue.id)}
+                  onClick={(e) => {
+                    // Plain click with no drag deletes the cue.
+                    if (!(e.currentTarget as HTMLElement).dataset.dragged) {
+                      useShowStore.getState().removeCue(cue.id)
+                    }
+                  }}
+                />
+              )
+            })}
           </div>
-        )}
-        <div ref={waveRef} className="waveform" style={{ display: audioUrl ? 'block' : 'none' }} />
 
-        {/* Cue markers */}
-        <div className="cue-layer">
-          {cues.map((cue) => {
-            const fw = getFireworkById(cue.fireworkTypeId)
-            const left = (cue.time / effectiveDuration) * 100
-            return (
-              <div
-                key={cue.id}
-                className="cue-marker"
-                style={{ left: `${left}%`, background: fw?.colors[0] ?? '#fff' }}
-                title={`${fw?.name ?? 'Firework'} @ ${fmt(cue.time)} — click to delete`}
-                onPointerDown={(e) => startCueDrag(e, cue.id)}
-                onClick={(e) => {
-                  // Plain click with no drag deletes the cue.
-                  if (!(e.currentTarget as HTMLElement).dataset.dragged) {
-                    useShowStore.getState().removeCue(cue.id)
-                  }
-                }}
-              />
-            )
-          })}
+          {/* Playhead line */}
+          <div className="playhead" style={{ left: `${playheadPct}%` }} />
         </div>
-
-        {/* Playhead line */}
-        <div className="playhead" style={{ left: `${playheadPct}%` }} />
       </div>
     </div>
   )

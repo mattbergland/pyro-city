@@ -68,6 +68,7 @@ export default function MapView() {
     let raf = 0
     let lastNow = performance.now()
     let lastTime = 0
+    let wasPlaying = false
 
     const frame = () => {
       const now = performance.now()
@@ -77,6 +78,13 @@ export default function MapView() {
       if (director) {
         const s = useShowStore.getState()
         const t = s.currentTime
+
+        // When playback starts, frame the show so the bursts are on screen.
+        // Cinematic mode does its own continuous framing via the orbit below.
+        if (s.isPlaying && !wasPlaying && !s.cinematic) {
+          director.frameShow(s.launchSites)
+        }
+        wasPlaying = s.isPlaying
 
         // Detect seek / restart -> clear active particles, don't retro-fire.
         if (t + 0.001 < lastTime) {
@@ -95,11 +103,9 @@ export default function MapView() {
         }
         lastTime = t
 
-        const focusSite =
-          s.launchSites.find((l) => l.id === s.selectedSiteId) ?? s.launchSites[0]
-        director.tick(dt, s.cinematic && s.isPlaying, focusSite
-          ? { lon: focusSite.longitude, lat: focusSite.latitude, height: focusSite.height + 60 }
-          : undefined)
+        // Cinematic orbit frames the centroid of every launch site so
+        // multi-site shows stay in view.
+        director.tick(dt, s.cinematic && s.isPlaying, cinematicFocus(s.launchSites))
       }
       raf = requestAnimationFrame(frame)
     }
@@ -108,6 +114,30 @@ export default function MapView() {
   }, [])
 
   return <div ref={containerRef} className="cesium-container" />
+}
+
+/** Centroid + spread of all launch sites, used as the cinematic orbit focus. */
+function cinematicFocus(sites: { longitude: number; latitude: number; height: number }[]) {
+  if (sites.length === 0) return undefined
+  let lon = 0
+  let lat = 0
+  let height = 0
+  for (const s of sites) {
+    lon += s.longitude
+    lat += s.latitude
+    height += s.height
+  }
+  lon /= sites.length
+  lat /= sites.length
+  height /= sites.length
+  // Approximate ground spread (metres) from the lat/lon extent of the sites.
+  let radius = 0
+  for (const s of sites) {
+    const dLat = (s.latitude - lat) * 111_320
+    const dLon = (s.longitude - lon) * 111_320 * Math.cos((lat * Math.PI) / 180)
+    radius = Math.max(radius, Math.hypot(dLat, dLon))
+  }
+  return { lon, lat, height: height + 120, radius }
 }
 
 /** Handle a click on the globe: place a new launch site or select one. */
