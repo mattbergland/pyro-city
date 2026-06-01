@@ -128,13 +128,21 @@ export const useShowStore = create<ShowState>((set, get) => ({
     return id
   },
   removeLaunchSite: (id) =>
-    set((s) => ({
-      // Renumber so the remaining sites stay a gap-free Launch 1..N sequence.
-      launchSites: renumber(s.launchSites.filter((l) => l.id !== id)),
-      cues: s.cues.filter((c) => c.launchSiteId !== id),
-      selectedSiteId: s.selectedSiteId === id ? null : s.selectedSiteId,
-      selectedSiteIds: s.selectedSiteIds.filter((sid) => sid !== id),
-    })),
+    set((s) => {
+      const selectedSiteIds = s.selectedSiteIds.filter((sid) => sid !== id)
+      return {
+        // Renumber so the remaining sites stay a gap-free Launch 1..N sequence.
+        launchSites: renumber(s.launchSites.filter((l) => l.id !== id)),
+        cues: s.cues.filter((c) => c.launchSiteId !== id),
+        // Keep the active site valid: if the deleted site was active, fall back
+        // to the last still-selected site (or null when none remain).
+        selectedSiteId:
+          s.selectedSiteId === id
+            ? selectedSiteIds[selectedSiteIds.length - 1] ?? null
+            : s.selectedSiteId,
+        selectedSiteIds,
+      }
+    }),
   updateLaunchSitePosition: (id, pos) =>
     set((s) => ({
       launchSites: s.launchSites.map((l) => (l.id === id ? { ...l, ...pos } : l)),
