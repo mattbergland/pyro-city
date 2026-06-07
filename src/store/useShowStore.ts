@@ -58,8 +58,18 @@ interface ShowState {
    */
   addCue: (time: number, fireworkTypeId?: string, launchSiteId?: string) => void
   updateCueTime: (id: string, time: number) => void
+  /** Move a cue to a different launch site. */
+  updateCueSite: (id: string, launchSiteId: string) => void
+  /** Change the firework type fired by a cue. */
+  updateCueFirework: (id: string, fireworkTypeId: string) => void
+  /** Override a cue's color (hex), or null to use the firework's default. */
+  updateCueColor: (id: string, colorOverride: string | null) => void
   removeCue: (id: string) => void
   clearCues: () => void
+  /** The cue currently selected for editing on the timeline (or null). */
+  selectedCueId: string | null
+  /** Select a cue for editing (or clear with null). */
+  selectCue: (id: string | null) => void
   /** Auto-place a cue on every Nth beat across a time range, optionally chasing sites. */
   fillBeats: (opts: {
     from: number
@@ -134,6 +144,12 @@ export const useShowStore = create<ShowState>((set, get) => ({
         // Renumber so the remaining sites stay a gap-free Launch 1..N sequence.
         launchSites: renumber(s.launchSites.filter((l) => l.id !== id)),
         cues: s.cues.filter((c) => c.launchSiteId !== id),
+        // Drop the cue selection if its cue belonged to the deleted site.
+        selectedCueId: s.cues.some(
+          (c) => c.id === s.selectedCueId && c.launchSiteId === id,
+        )
+          ? null
+          : s.selectedCueId,
         // Keep the active site valid: if the deleted site was active, fall back
         // to the last still-selected site (or null when none remain).
         selectedSiteId:
@@ -149,7 +165,13 @@ export const useShowStore = create<ShowState>((set, get) => ({
     })),
   renumberSites: () => set((s) => ({ launchSites: renumber(s.launchSites) })),
   clearLaunchSites: () =>
-    set({ launchSites: [], cues: [], selectedSiteId: null, selectedSiteIds: [] }),
+    set({
+      launchSites: [],
+      cues: [],
+      selectedSiteId: null,
+      selectedSiteIds: [],
+      selectedCueId: null,
+    }),
   selectSite: (id) =>
     set({ selectedSiteId: id, selectedSiteIds: id ? [id] : [] }),
   toggleSiteInSelection: (id) =>
@@ -222,8 +244,26 @@ export const useShowStore = create<ShowState>((set, get) => ({
         .map((c) => (c.id === id ? { ...c, time: maybeSnap(Math.max(0, time), s) } : c))
         .sort((a, b) => a.time - b.time),
     })),
-  removeCue: (id) => set((s) => ({ cues: s.cues.filter((c) => c.id !== id) })),
-  clearCues: () => set({ cues: [] }),
+  updateCueSite: (id, launchSiteId) =>
+    set((s) => ({
+      cues: s.cues.map((c) => (c.id === id ? { ...c, launchSiteId } : c)),
+    })),
+  updateCueFirework: (id, fireworkTypeId) =>
+    set((s) => ({
+      cues: s.cues.map((c) => (c.id === id ? { ...c, fireworkTypeId } : c)),
+    })),
+  updateCueColor: (id, colorOverride) =>
+    set((s) => ({
+      cues: s.cues.map((c) => (c.id === id ? { ...c, colorOverride } : c)),
+    })),
+  removeCue: (id) =>
+    set((s) => ({
+      cues: s.cues.filter((c) => c.id !== id),
+      selectedCueId: s.selectedCueId === id ? null : s.selectedCueId,
+    })),
+  clearCues: () => set({ cues: [], selectedCueId: null }),
+  selectedCueId: null,
+  selectCue: (id) => set({ selectedCueId: id }),
   fillBeats: ({ from, to, everyNBeats, chase }) => {
     const state = get()
     const { bpm, beatOffset } = state
