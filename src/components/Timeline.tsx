@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import { useShowStore } from '../store/useShowStore'
 import { audioRefs } from '../audio/audioRefs'
-import { getFireworkById } from '../data/fireworks'
+import { getFireworkById, FIREWORK_LIBRARY } from '../data/fireworks'
 import { decodeAudio, estimateBpm } from '../audio/bpm'
+import type { Cue, LaunchSite } from '../types'
 
 const DEFAULT_DURATION = 60 // seconds, used when no audio is loaded
 const MAX_ZOOM = 24
@@ -33,6 +34,10 @@ export default function Timeline() {
   const beatOffset = useShowStore((s) => s.beatOffset)
   const snapToBeat = useShowStore((s) => s.snapToBeat)
   const autoAdvance = useShowStore((s) => s.autoAdvance)
+  const selectedCueId = useShowStore((s) => s.selectedCueId)
+  const selectCue = useShowStore((s) => s.selectCue)
+
+  const selectedCue = cues.find((c) => c.id === selectedCueId) ?? null
 
   const [dragOver, setDragOver] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -144,6 +149,14 @@ export default function Timeline() {
         store.addCue(store.currentTime)
       } else if (e.key === 'n' || e.key === 'N') {
         cueThenNext()
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Delete the selected cue (if any).
+        if (store.selectedCueId) {
+          e.preventDefault()
+          store.removeCue(store.selectedCueId)
+        }
+      } else if (e.key === 'Escape') {
+        store.selectCue(null)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -429,8 +442,10 @@ export default function Timeline() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           onPointerDown={(e) => {
-            // Click on empty track space seeks the playhead.
+            // Click on empty track space seeks the playhead and clears any
+            // selected cue.
             if (e.target === trackRef.current || (e.target as HTMLElement).classList.contains('waveform')) {
+              selectCue(null)
               seekTo(e.clientX)
             }
           }}
@@ -462,17 +477,19 @@ export default function Timeline() {
               const fw = getFireworkById(cue.fireworkTypeId)
               const left = (cue.time / effectiveDuration) * 100
               const n = siteNumber(cue.launchSiteId)
-              const color = fw?.colors[0] ?? '#fff'
+              const color = cue.colorOverride ?? fw?.colors[0] ?? '#fff'
+              const isSelected = cue.id === selectedCueId
               return (
                 <div
                   key={cue.id}
-                  className="cue-marker"
+                  className={isSelected ? 'cue-marker selected' : 'cue-marker'}
                   style={{ left: `${left}%` }}
-                  title={`Launch ${n} · ${fw?.name ?? 'Firework'} @ ${fmt(cue.time)} — drag to move, click to delete`}
+                  title={`Launch ${n} · ${fw?.name ?? 'Firework'} @ ${fmt(cue.time)} — click to select, drag to move`}
                   onPointerDown={(e) => startCueDrag(e, cue.id)}
                   onClick={(e) => {
+                    e.stopPropagation()
                     if (!(e.currentTarget as HTMLElement).dataset.dragged) {
-                      useShowStore.getState().removeCue(cue.id)
+                      selectCue(cue.id)
                     }
                   }}
                 >
@@ -491,12 +508,18 @@ export default function Timeline() {
           </div>
         </div>
       </div>
+
+      {selectedCue && (
+        <CueInspector key={selectedCue.id} cue={selectedCue} launchSites={launchSites} />
+      )}
     </div>
   )
 
   // --- Cue dragging to reposition in time ---
   function startCueDrag(e: React.PointerEvent, cueId: string) {
     e.stopPropagation()
+    // Selecting on pointer-down means a cue is selected even mid-drag.
+    useShowStore.getState().selectCue(cueId)
     const target = e.currentTarget as HTMLElement
     delete target.dataset.dragged
     const startX = e.clientX
@@ -525,5 +548,105 @@ function CinematicToggle() {
     >
       🎥 Cinematic {cinematic ? 'On' : 'Off'}
     </button>
+  )
+}
+
+/** Editor for the currently selected cue: site, firework, time, color, delete. */
+function CueInspector({ cue, launchSites }: { cue: Cue; launchSites: LaunchSite[] }) {
+  const updateCueTime = useShowStore((s) => s.updateCueTime)
+  const updateCueSite = useShowStore((s) => s.updateCueSite)
+  const updateCueFirework = useShowStore((s) => s.updateCueFirework)
+  const updateCueColor = useShowStore((s) => s.updateCueColor)
+  const removeCue = useShowStore((s) => s.removeCue)
+  const selectCue = useShowStore((s) => s.selectCue)
+
+  const fw = getFireworkById(cue.fireworkTypeId)
+  const siteNum = launchSites.findIndex((l) => l.id === cue.launchSiteId) + 1
+  const color = cue.colorOverride ?? fw?.colors[0] ?? '#ffffff'
+
+  return (
+    <div className="cue-inspector" role="group" aria-label="Selected cue">
+      <span className="cue-inspector-title">
+        <span className="cue-badge" style={{ background: color }}>
+          {siteNum > 0 ? siteNum : '?'}
+        </span>
+        Cue
+      </span>
+
+      <label className="cue-field">
+        <span className="tool-label">Site</span>
+        <select
+          value={cue.launchSiteId}
+          onChange={(e) => updateCueSite(cue.id, e.target.value)}
+          title="Launch site this cue fires from"
+        >
+          {launchSites.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="cue-field">
+        <span className="tool-label">Firework</span>
+        <select
+          value={cue.fireworkTypeId}
+          onChange={(e) => updateCueFirework(cue.id, e.target.value)}
+          title="Firework this cue fires"
+        >
+          {FIREWORK_LIBRARY.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="cue-field">
+        <span className="tool-label">Time</span>
+        <input
+          type="number"
+          className="bpm-input"
+          step={0.1}
+          min={0}
+          value={Number(cue.time.toFixed(2))}
+          onChange={(e) => updateCueTime(cue.id, Math.max(0, Number(e.target.value) || 0))}
+          title="Time (seconds) the cue fires"
+        />
+        <span className="tool-label">s</span>
+      </label>
+
+      <label className="cue-field">
+        <span className="tool-label">Color</span>
+        <input
+          type="color"
+          className="cue-color"
+          value={color}
+          onChange={(e) => updateCueColor(cue.id, e.target.value)}
+          title="Override this cue's color"
+        />
+        {cue.colorOverride && (
+          <button
+            className="mini-btn"
+            onClick={() => updateCueColor(cue.id, null)}
+            title="Reset to the firework's default color"
+          >
+            Reset
+          </button>
+        )}
+      </label>
+
+      <button
+        className="mini-btn danger"
+        onClick={() => removeCue(cue.id)}
+        title="Delete this cue (Delete)"
+      >
+        ✕ Delete
+      </button>
+      <button className="mini-btn" onClick={() => selectCue(null)} title="Close (Esc)">
+        Done
+      </button>
+    </div>
   )
 }
